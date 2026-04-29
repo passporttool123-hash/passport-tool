@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Passport Photo Maker</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<style>
+body {
+  font-family: Arial;
+  text-align: center;
+  padding: 20px;
+  background: #f5f5f5;
+}
+
+.container {
+  background: white;
+  padding: 20px;
+  border-radius: 10px;
+  max-width: 420px;
+  margin: auto;
+}
+
+button {
+  padding: 10px 15px;
+  margin: 5px;
+  cursor: pointer;
+  background: #ddd;
+  border: none;
+  border-radius: 5px;
+}
+
+.bg-btn.active {
+  background: #007bff;
+  color: white;
+}
+
+.layout-btn.active {
+  background: #28a745;
+  color: white;
+}
+
+.hidden {
+  display: none;
+}
+
+#status {
+  margin-top: 10px;
+  font-size: 14px;
+  color: green;
+}
+
+img {
+  margin-top: 20px;
+  max-width: 100%;
+}
+</style>
+</head>
+
+<body>
+
+<div class="container">
+  <h2>Passport Photo Maker</h2>
+
+  <input type="file" id="fileInput" onchange="showOptions()" />
+
+  <div id="status"></div>
+
+  <div id="options" class="hidden">
+
+    <br>
+    <b>Select Background:</b><br>
+    <button class="bg-btn" onclick="selectBg(this, '#ffffff')">White</button>
+    <button class="bg-btn" onclick="selectBg(this, '#2f5fa5')">Blue</button>
+    <button class="bg-btn" onclick="selectBg(this, '#c0c0c0')">Grey</button>
+
+    <br><br>
+    <b>Select Layout:</b><br>
+    <button class="layout-btn" onclick="selectLayout(this, 1)">Single</button>
+    <button class="layout-btn" onclick="selectLayout(this, 8)">8 Photos</button>
+    <button class="layout-btn" onclick="selectLayout(this, 16)">16 Photos</button>
+
+    <br><br>
+    <button style="background:#000;color:#fff;" onclick="processImage()">
+      Generate Photo
+    </button>
+
+  </div>
+
+  <img id="resultImage" />
+  <br><br>
+  <a id="downloadBtn" style="display:none;">Download</a>
+</div>
+
+<script>
+let selectedBg = null;
+let selectedLayout = null;
+
+function showOptions() {
+  document.getElementById("options").classList.remove("hidden");
+  document.getElementById("status").innerText = "Image selected. Choose options.";
+}
+
+// ✅ FIX: separate highlight groups
+function selectBg(btn, color) {
+  selectedBg = color;
+
+  document.querySelectorAll(".bg-btn").forEach(b => b.classList.remove("active"));
+  btn.classList.add("active");
+
+  document.getElementById("status").innerText = "Background selected";
+}
+
+function selectLayout(btn, num) {
+  selectedLayout = num;
+
+  document.querySelectorAll(".layout-btn").forEach(b => b.classList.remove("active"));
+  btn.classList.add("active");
+
+  document.getElementById("status").innerText = "Layout selected: " + num;
+}
+
+async function processImage() {
+  const file = document.getElementById("fileInput").files[0];
+
+  if (!file) {
+    alert("Select image first");
+    return;
+  }
+
+  if (!selectedBg || !selectedLayout) {
+    alert("Please select both background and layout");
+    return;
+  }
+
+  document.getElementById("status").innerText = "Processing...";
+
+  const reader = new FileReader();
+
+  reader.onload = async function () {
+    const base64 = reader.result.split(",")[1];
+
+    try {
+      const response = await fetch("/.netlify/functions/removebg", {
+        method: "POST",
+        body: JSON.stringify({ image: base64 })
+      });
+
+      if (!response.ok) {
+        throw new Error("API failed");
+      }
+
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+
+      createPhoto(url);
+
+    } catch (err) {
+      document.getElementById("status").innerText = "API Error (backend issue)";
+      alert("API Error - backend not connected yet");
+    }
+  };
+
+  reader.readAsDataURL(file);
+}
+
+function createPhoto(imageUrl) {
+  const img = new Image();
+  img.src = imageUrl;
+
+  img.onload = function () {
+    const canvas = document.createElement("canvas");
+    canvas.width = 413;
+    canvas.height = 531;
+
+    const ctx = canvas.getContext("2d");
+
+    ctx.fillStyle = selectedBg;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    const scale = Math.min(canvas.width / img.width, canvas.height / img.height);
+    const w = img.width * scale;
+    const h = img.height * scale;
+
+    const x = (canvas.width - w) / 2;
+    const y = (canvas.height - h) / 2 - (h * 0.15);
+
+    ctx.drawImage(img, x, y, w, h);
+
+    if (selectedLayout === 1) {
+      const finalImage = canvas.toDataURL("image/jpeg");
+      showResult(finalImage, "passport-single.jpg");
+      return;
+    }
+
+    let cols = 4;
+    let rows = selectedLayout === 8 ? 2 : 4;
+    const gap = 10;
+
+    const sheet = document.createElement("canvas");
+    sheet.width = cols * canvas.width + (cols - 1) * gap;
+    sheet.height = rows * canvas.height + (rows - 1) * gap;
+
+    const sctx = sheet.getContext("2d");
+
+    sctx.fillStyle = "white";
+    sctx.fillRect(0, 0, sheet.width, sheet.height);
+
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        sctx.drawImage(
+          canvas,
+          c * (canvas.width + gap),
+          r * (canvas.height + gap)
+        );
+      }
+    }
+
+    const finalImage = sheet.toDataURL("image/jpeg");
+    showResult(finalImage, "passport-grid.jpg");
+  };
+}
+
+function showResult(imageData, fileName) {
+  document.getElementById("status").innerText = "Done!";
+
+  const img = document.getElementById("resultImage");
+  img.src = imageData;
+
+  const btn = document.getElementById("downloadBtn");
+  btn.href = imageData;
+  btn.download = fileName;
+  btn.style.display = "inline-block";
+  btn.innerText = "Download";
+}
+</script>
+
+</body>
+</html>
