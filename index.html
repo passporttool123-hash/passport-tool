@@ -5,6 +5,8 @@
 <title>Passport Photo Maker</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
+<script src="https://cdn.jsdelivr.net/npm/face-api.js"></script>
+
 <style>
 body {
   font-family: Arial;
@@ -95,43 +97,42 @@ img {
 <script>
 let selectedBg = null;
 let selectedLayout = null;
+let modelLoaded = false;
 
+// LOAD AI MODEL
+async function loadModel() {
+  await faceapi.nets.tinyFaceDetector.loadFromUri(
+    "https://justadudewhohacks.github.io/face-api.js/models"
+  );
+  modelLoaded = true;
+  console.log("AI ready");
+}
+window.onload = loadModel;
+
+// UI
 function showOptions() {
   document.getElementById("options").classList.remove("hidden");
   document.getElementById("status").innerText = "Image selected. Choose options.";
 }
 
-// ✅ FIX: separate highlight groups
 function selectBg(btn, color) {
   selectedBg = color;
-
   document.querySelectorAll(".bg-btn").forEach(b => b.classList.remove("active"));
   btn.classList.add("active");
-
-  document.getElementById("status").innerText = "Background selected";
 }
 
 function selectLayout(btn, num) {
   selectedLayout = num;
-
   document.querySelectorAll(".layout-btn").forEach(b => b.classList.remove("active"));
   btn.classList.add("active");
-
-  document.getElementById("status").innerText = "Layout selected: " + num;
 }
 
+// PROCESS IMAGE
 async function processImage() {
   const file = document.getElementById("fileInput").files[0];
 
-  if (!file) {
-    alert("Select image first");
-    return;
-  }
-
-  if (!selectedBg || !selectedLayout) {
-    alert("Please select both background and layout");
-    return;
-  }
+  if (!file) return alert("Select image first");
+  if (!selectedBg || !selectedLayout) return alert("Select options");
 
   document.getElementById("status").innerText = "Processing...";
 
@@ -140,35 +141,31 @@ async function processImage() {
   reader.onload = async function () {
     const base64 = reader.result.split(",")[1];
 
-    try {
-      const response = await fetch("/.netlify/functions/removebg", {
-        method: "POST",
-        body: JSON.stringify({ image: base64 })
-      });
+    const response = await fetch("/.netlify/functions/removebg", {
+      method: "POST",
+      body: JSON.stringify({ image: base64 })
+    });
 
-      if (!response.ok) {
-        throw new Error("API failed");
-      }
-
-      const blob = await response.blob();
-      const url = URL.createObjectURL(blob);
-
-      createPhoto(url);
-
-    } catch (err) {
-      document.getElementById("status").innerText = "API Error (backend issue)";
-      alert("API Error - backend not connected yet");
+    if (!response.ok) {
+      alert("API Error");
+      return;
     }
+
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+
+    createPhoto(url);
   };
 
   reader.readAsDataURL(file);
 }
 
-function createPhoto(imageUrl) {
+// CREATE PHOTO WITH AI
+async function createPhoto(imageUrl) {
   const img = new Image();
   img.src = imageUrl;
 
-  img.onload = function () {
+  img.onload = async function () {
     const canvas = document.createElement("canvas");
     canvas.width = 413;
     canvas.height = 531;
@@ -178,21 +175,54 @@ function createPhoto(imageUrl) {
     ctx.fillStyle = selectedBg;
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-    const scale = Math.min(canvas.width / img.width, canvas.height / img.height);
-    const w = img.width * scale;
-    const h = img.height * scale;
+    let x, y, w, h;
 
-    const x = (canvas.width - w) / 2;
-    const y = (canvas.height - h) / 2 - (h * 0.15);
+    if (modelLoaded) {
+      const detection = await faceapi.detectSingleFace(
+        img,
+        new faceapi.TinyFaceDetectorOptions()
+      );
 
-    ctx.drawImage(img, x, y, w, h);
+      if (detection) {
+        const box = detection.box;
 
+        const topPadding = 1.2;
+        const bottomPadding = 1.5;
+        const sidePadding = 1.0;
+
+        const centerX = box.x + box.width / 2;
+        const centerY = box.y + box.height / 2;
+
+        w = box.width * (1 + sidePadding);
+        h = box.height * (topPadding + bottomPadding);
+
+        x = centerX - w / 2;
+        y = centerY - (box.height * topPadding);
+
+        x = Math.max(0, x);
+        y = Math.max(0, y);
+      }
+    }
+
+    // fallback
+    if (!w) {
+      const scale = Math.min(canvas.width / img.width, canvas.height / img.height);
+      w = img.width * scale;
+      h = img.height * scale;
+      x = (canvas.width - w) / 2;
+      y = (canvas.height - h) / 2;
+    }
+
+    ctx.drawImage(img, x, y, w, h, 0, 0, canvas.width, canvas.height);
+
+    // SINGLE
     if (selectedLayout === 1) {
       const finalImage = canvas.toDataURL("image/jpeg");
-      showResult(finalImage, "passport-single.jpg");
+      showResult(finalImage, "passport.jpg");
       return;
     }
 
+    // GRID
     let cols = 4;
     let rows = selectedLayout === 8 ? 2 : 4;
     const gap = 10;
@@ -208,11 +238,7 @@ function createPhoto(imageUrl) {
 
     for (let r = 0; r < rows; r++) {
       for (let c = 0; c < cols; c++) {
-        sctx.drawImage(
-          canvas,
-          c * (canvas.width + gap),
-          r * (canvas.height + gap)
-        );
+        sctx.drawImage(canvas, c * (canvas.width + gap), r * (canvas.height + gap));
       }
     }
 
@@ -221,11 +247,11 @@ function createPhoto(imageUrl) {
   };
 }
 
+// SHOW RESULT
 function showResult(imageData, fileName) {
   document.getElementById("status").innerText = "Done!";
 
-  const img = document.getElementById("resultImage");
-  img.src = imageData;
+  document.getElementById("resultImage").src = imageData;
 
   const btn = document.getElementById("downloadBtn");
   btn.href = imageData;
