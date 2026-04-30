@@ -6,6 +6,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
 <script src="https://cdn.jsdelivr.net/npm/face-api.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 
 <style>
 body {
@@ -32,232 +33,270 @@ button {
   border-radius: 5px;
 }
 
-.bg-btn.active {
-  background: #007bff;
-  color: white;
-}
+.bg-btn.active { background:#007bff;color:white; }
+.layout-btn.active { background:#28a745;color:white; }
+.country-btn.active { background:#ff9800;color:white; }
 
-.layout-btn.active {
-  background: #28a745;
-  color: white;
-}
+.hidden { display:none; }
 
-.hidden {
-  display: none;
-}
+#status { margin-top:10px;font-size:14px;color:green; }
 
-#status {
-  margin-top: 10px;
-  font-size: 14px;
-  color: green;
-}
-
-img {
-  margin-top: 20px;
-  max-width: 100%;
-}
+img { margin-top:20px; max-width:100%; }
 </style>
 </head>
 
 <body>
 
 <div class="container">
-  <h2>Passport Photo Maker</h2>
 
-  <input type="file" id="fileInput" onchange="showOptions()" />
+<h1>Make Passport Size Photo Online – Free</h1>
+<p>Create passport photos instantly for jobs, visas, and government forms.</p>
 
-  <div id="status"></div>
+<h2>Passport Photo Maker</h2>
 
-  <div id="options" class="hidden">
+<input type="file" id="fileInput" onchange="showOptions()" />
 
-    <br>
-    <b>Select Background:</b><br>
-    <button class="bg-btn" onclick="selectBg(this, '#ffffff')">White</button>
-    <button class="bg-btn" onclick="selectBg(this, '#2f5fa5')">Blue</button>
-    <button class="bg-btn" onclick="selectBg(this, '#c0c0c0')">Grey</button>
+<img id="preview" style="display:none; max-width:100%; margin-top:10px;">
 
-    <br><br>
-    <b>Select Layout:</b><br>
-    <button class="layout-btn" onclick="selectLayout(this, 1)">Single</button>
-    <button class="layout-btn" onclick="selectLayout(this, 8)">8 Photos</button>
-    <button class="layout-btn" onclick="selectLayout(this, 16)">16 Photos</button>
+<p style="color:red;font-size:14px;">
+⚠ Upload clear front face photo. Limited free attempts.
+</p>
 
-    <br><br>
-    <button style="background:#000;color:#fff;" onclick="processImage()">
-      Generate Photo
-    </button>
+<div id="status"></div>
 
-  </div>
+<div id="options" class="hidden">
 
-  <img id="resultImage" />
-  <br><br>
-  <a id="downloadBtn" style="display:none;">Download</a>
+<b>Select Background:</b><br>
+<button class="bg-btn" onclick="selectBg(this,'#ffffff')">White</button>
+<button class="bg-btn" onclick="selectBg(this,'#2f5fa5')">Blue</button>
+<button class="bg-btn" onclick="selectBg(this,'#c0c0c0')">Grey</button>
+
+<br><br>
+<b>Select Layout:</b><br>
+<button class="layout-btn" onclick="selectLayout(this,1)">Single</button>
+<button class="layout-btn" onclick="selectLayout(this,8)">8 Photos</button>
+<button class="layout-btn" onclick="selectLayout(this,16)">16 Photos</button>
+
+<br><br>
+<b>Select Country:</b><br>
+<button class="country-btn" onclick="selectCountry(this,'india')">India</button>
+<button class="country-btn" onclick="selectCountry(this,'usa')">USA</button>
+<button class="country-btn" onclick="selectCountry(this,'uk')">UK</button>
+<button class="country-btn" onclick="selectCountry(this,'canada')">Canada</button>
+<button class="country-btn" onclick="selectCountry(this,'australia')">Australia</button>
+
+<br><br>
+<b>Adjust Photo:</b><br>
+Zoom:<br>
+<input type="range" id="zoom" min="1" max="2" step="0.1" value="1"><br>
+
+Move X:<br>
+<input type="range" id="moveX" min="-100" max="100" value="0"><br>
+
+Move Y:<br>
+<input type="range" id="moveY" min="-100" max="100" value="0"><br><br>
+
+<button id="generateBtn" style="background:#000;color:#fff;" onclick="processImage()">
+Generate Photo
+</button>
+
+</div>
+
+<img id="resultImage" />
+<br><br>
+<a id="downloadBtn" style="display:none;">Download JPG</a><br><br>
+<button onclick="downloadPDF()">Download PDF</button>
+
+<h3>How It Works</h3>
+<p>1. Upload your photo</p>
+<p>2. Choose background & size</p>
+<p>3. Download instantly</p>
+
 </div>
 
 <script>
-let selectedBg = null;
-let selectedLayout = null;
-let modelLoaded = false;
+let selectedBg=null;
+let selectedLayout=null;
+let selectedSize={w:413,h:531};
+let modelLoaded=false;
 
-// LOAD AI MODEL
-async function loadModel() {
-  await faceapi.nets.tinyFaceDetector.loadFromUri(
-    "https://justadudewhohacks.github.io/face-api.js/models"
-  );
-  modelLoaded = true;
-  console.log("AI ready");
+// LOAD AI
+async function loadModel(){
+ await faceapi.nets.tinyFaceDetector.loadFromUri(
+ "https://justadudewhohacks.github.io/face-api.js/models"
+ );
+ modelLoaded=true;
 }
-window.onload = loadModel;
+window.onload=loadModel;
 
 // UI
-function showOptions() {
-  document.getElementById("options").classList.remove("hidden");
-  document.getElementById("status").innerText = "Image selected. Choose options.";
+function showOptions(){
+ const file=document.getElementById("fileInput").files[0];
+ const preview=document.getElementById("preview");
+ preview.src=URL.createObjectURL(file);
+ preview.style.display="block";
+
+ document.getElementById("options").classList.remove("hidden");
+ document.getElementById("status").innerText="Check photo then generate";
 }
 
-function selectBg(btn, color) {
-  selectedBg = color;
-  document.querySelectorAll(".bg-btn").forEach(b => b.classList.remove("active"));
-  btn.classList.add("active");
+function selectBg(btn,color){
+ selectedBg=color;
+ document.querySelectorAll(".bg-btn").forEach(b=>b.classList.remove("active"));
+ btn.classList.add("active");
 }
 
-function selectLayout(btn, num) {
-  selectedLayout = num;
-  document.querySelectorAll(".layout-btn").forEach(b => b.classList.remove("active"));
-  btn.classList.add("active");
+function selectLayout(btn,num){
+ selectedLayout=num;
+ document.querySelectorAll(".layout-btn").forEach(b=>b.classList.remove("active"));
+ btn.classList.add("active");
 }
 
-// PROCESS IMAGE
-async function processImage() {
-  const file = document.getElementById("fileInput").files[0];
+function selectCountry(btn,c){
+ document.querySelectorAll(".country-btn").forEach(b=>b.classList.remove("active"));
+ btn.classList.add("active");
 
-  if (!file) return alert("Select image first");
-  if (!selectedBg || !selectedLayout) return alert("Select options");
-
-  document.getElementById("status").innerText = "Processing...";
-
-  const reader = new FileReader();
-
-  reader.onload = async function () {
-    const base64 = reader.result.split(",")[1];
-
-    const response = await fetch("/.netlify/functions/removebg", {
-      method: "POST",
-      body: JSON.stringify({ image: base64 })
-    });
-
-    if (!response.ok) {
-      alert("API Error");
-      return;
-    }
-
-    const blob = await response.blob();
-    const url = URL.createObjectURL(blob);
-
-    createPhoto(url);
-  };
-
-  reader.readAsDataURL(file);
+ if(c==="india") selectedSize={w:413,h:531};
+ if(c==="usa") selectedSize={w:600,h:600};
+ if(c==="uk") selectedSize={w:413,h:531};
+ if(c==="canada") selectedSize={w:420,h:540};
+ if(c==="australia") selectedSize={w:413,h:531};
 }
 
-// CREATE PHOTO WITH AI
-async function createPhoto(imageUrl) {
-  const img = new Image();
-  img.src = imageUrl;
+// PROCESS
+async function processImage(){
 
-  img.onload = async function () {
-    const canvas = document.createElement("canvas");
-    canvas.width = 413;
-    canvas.height = 531;
+ let count=localStorage.getItem("usage")||0;
+ if(count>=3){ alert("Limit reached"); return; }
+ localStorage.setItem("usage",++count);
 
-    const ctx = canvas.getContext("2d");
+ document.getElementById("generateBtn").disabled=true;
 
-    ctx.fillStyle = selectedBg;
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+ const file=document.getElementById("fileInput").files[0];
+ if(!file||!selectedBg||!selectedLayout) return alert("Select all options");
 
-    let x, y, w, h;
+ document.getElementById("status").innerText="Processing...";
 
-    if (modelLoaded) {
-      const detection = await faceapi.detectSingleFace(
-        img,
-        new faceapi.TinyFaceDetectorOptions()
-      );
+ const reader=new FileReader();
 
-      if (detection) {
-        const box = detection.box;
+ reader.onload=async function(){
+  const base64=reader.result.split(",")[1];
 
-        const topPadding = 1.2;
-        const bottomPadding = 1.5;
-        const sidePadding = 1.0;
+  const res=await fetch("/.netlify/functions/removebg",{
+   method:"POST",
+   body:JSON.stringify({image:base64})
+  });
 
-        const centerX = box.x + box.width / 2;
-        const centerY = box.y + box.height / 2;
+  if(!res.ok){ alert("API Error"); return; }
 
-        w = box.width * (1 + sidePadding);
-        h = box.height * (topPadding + bottomPadding);
+  const blob=await res.blob();
+  const url=URL.createObjectURL(blob);
 
-        x = centerX - w / 2;
-        y = centerY - (box.height * topPadding);
+  createPhoto(url);
+ };
 
-        x = Math.max(0, x);
-        y = Math.max(0, y);
-      }
-    }
-
-    // fallback
-    if (!w) {
-      const scale = Math.min(canvas.width / img.width, canvas.height / img.height);
-      w = img.width * scale;
-      h = img.height * scale;
-      x = (canvas.width - w) / 2;
-      y = (canvas.height - h) / 2;
-    }
-
-    ctx.drawImage(img, x, y, w, h, 0, 0, canvas.width, canvas.height);
-
-    // SINGLE
-    if (selectedLayout === 1) {
-      const finalImage = canvas.toDataURL("image/jpeg");
-      showResult(finalImage, "passport.jpg");
-      return;
-    }
-
-    // GRID
-    let cols = 4;
-    let rows = selectedLayout === 8 ? 2 : 4;
-    const gap = 10;
-
-    const sheet = document.createElement("canvas");
-    sheet.width = cols * canvas.width + (cols - 1) * gap;
-    sheet.height = rows * canvas.height + (rows - 1) * gap;
-
-    const sctx = sheet.getContext("2d");
-
-    sctx.fillStyle = "white";
-    sctx.fillRect(0, 0, sheet.width, sheet.height);
-
-    for (let r = 0; r < rows; r++) {
-      for (let c = 0; c < cols; c++) {
-        sctx.drawImage(canvas, c * (canvas.width + gap), r * (canvas.height + gap));
-      }
-    }
-
-    const finalImage = sheet.toDataURL("image/jpeg");
-    showResult(finalImage, "passport-grid.jpg");
-  };
+ reader.readAsDataURL(file);
 }
 
-// SHOW RESULT
-function showResult(imageData, fileName) {
-  document.getElementById("status").innerText = "Done!";
+// CREATE PHOTO
+async function createPhoto(imageUrl){
+ const img=new Image();
+ img.src=imageUrl;
 
-  document.getElementById("resultImage").src = imageData;
+ img.onload=async function(){
 
-  const btn = document.getElementById("downloadBtn");
-  btn.href = imageData;
-  btn.download = fileName;
-  btn.style.display = "inline-block";
-  btn.innerText = "Download";
+  const canvas=document.createElement("canvas");
+  canvas.width=selectedSize.w;
+  canvas.height=selectedSize.h;
+
+  const ctx=canvas.getContext("2d");
+
+  ctx.fillStyle=selectedBg;
+  ctx.fillRect(0,0,canvas.width,canvas.height);
+
+  let x,y,w,h;
+
+  if(modelLoaded){
+   const det=await faceapi.detectSingleFace(img,new faceapi.TinyFaceDetectorOptions());
+   if(det){
+    const box=det.box;
+    const cx=box.x+box.width/2;
+    const cy=box.y+box.height/2;
+
+    w=box.width*2;
+    h=box.height*2.7;
+
+    x=cx-w/2;
+    y=cy-box.height*1.2;
+   }
+  }
+
+  if(!w){
+   const scale=Math.min(canvas.width/img.width,canvas.height/img.height);
+   w=img.width*scale;
+   h=img.height*scale;
+   x=(canvas.width-w)/2;
+   y=(canvas.height-h)/2;
+  }
+
+  let zoom=document.getElementById("zoom").value;
+  let moveX=parseInt(document.getElementById("moveX").value);
+  let moveY=parseInt(document.getElementById("moveY").value);
+
+  w*=zoom;
+  h*=zoom;
+  x+=moveX;
+  y+=moveY;
+
+  ctx.drawImage(img,x,y,w,h,0,0,canvas.width,canvas.height);
+
+  if(selectedLayout===1){
+   showResult(canvas.toDataURL(),"passport.jpg");
+   return;
+  }
+
+  let cols=4;
+  let rows=selectedLayout===8?2:4;
+  let gap=10;
+
+  const sheet=document.createElement("canvas");
+  sheet.width=cols*canvas.width+(cols-1)*gap;
+  sheet.height=rows*canvas.height+(rows-1)*gap;
+
+  const sctx=sheet.getContext("2d");
+  sctx.fillStyle="white";
+  sctx.fillRect(0,0,sheet.width,sheet.height);
+
+  for(let r=0;r<rows;r++){
+   for(let c=0;c<cols;c++){
+    sctx.drawImage(canvas,c*(canvas.width+gap),r*(canvas.height+gap));
+   }
+  }
+
+  showResult(sheet.toDataURL(),"passport-grid.jpg");
+ };
+}
+
+// RESULT
+function showResult(imgData,name){
+ document.getElementById("status").innerText="Done!";
+ document.getElementById("resultImage").src=imgData;
+
+ const btn=document.getElementById("downloadBtn");
+ btn.href=imgData;
+ btn.download=name;
+ btn.style.display="inline-block";
+}
+
+// PDF
+function downloadPDF(){
+ const img=document.getElementById("resultImage").src;
+ if(!img) return alert("Generate image first");
+
+ const {jsPDF}=window.jspdf;
+ const pdf=new jsPDF();
+ pdf.addImage(img,"JPEG",10,10,180,240);
+ pdf.save("passport.pdf");
 }
 </script>
 
